@@ -11,6 +11,7 @@ type CartItem = {
 type CartState = {
     items: CartItem[];
     addToCart: (item: Omit<CartItem, 'quantity'>) => void;
+    addItemsToCart: (newItems: Omit<CartItem, 'quantity'>[], quantity: number) => void;
     removeFromCart: (id: string) => void;
     updateQuantity: (id: string, quantity: number) => void;
     clearCart: () => void;
@@ -20,6 +21,19 @@ export const useCartStore = create<CartState>()(
     persist(
         (set) => ({
             items: [],
+            addItemsToCart: (newItems, quantity) =>
+                set((state) => {
+                    const updatedItems = [...state.items];
+                    newItems.forEach((newItem) => {
+                        const existingItem = updatedItems.find((i) => i.id === newItem.id);
+                        if (existingItem) {
+                            existingItem.quantity += quantity;
+                        } else {
+                            updatedItems.push({ ...newItem, quantity });
+                        }
+                    });
+                    return { items: updatedItems };
+                }),
             addToCart: (item) =>
                 set((state) => {
                     const existingItem = state.items.find((i) => i.id === item.id);
