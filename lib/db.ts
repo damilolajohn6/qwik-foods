@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI: string = process.env.MONGODB_URI as string;
 
 if (!MONGODB_URI) {
     throw new Error('Please define the MONGODB_URI environment variable');
@@ -15,25 +15,40 @@ interface MongooseGlobal {
 
 declare const global: typeof globalThis & MongooseGlobal;
 
-if (!global.mongoose) {
-    global.mongoose = { conn: null, promise: null };
+let cached = global.mongoose;
+
+if (!cached) {
+    cached = global.mongoose = { conn: null, promise: null };
 }
 
-async function connectDB() {
-    if (global.mongoose.conn) {
-        return global.mongoose.conn;
+async function connectDB(): Promise<typeof mongoose> {
+    if (cached.conn) {
+        return cached.conn;
     }
 
-    if (!global.mongoose.promise) {
-        const opts = {
+    if (!cached.promise) {
+        const opts: mongoose.ConnectOptions = {
             bufferCommands: false,
+            dbName: 'qwikfoods',
         };
 
-        global.mongoose.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => mongoose);
+        cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
+            const db = mongooseInstance.connection.db;
+            if (db) {
+                console.log('Connected to MongoDB database:', db.databaseName);
+            }
+            return mongooseInstance;
+        });
     }
 
-    global.mongoose.conn = await global.mongoose.promise;
-    return global.mongoose.conn;
+    try {
+        cached.conn = await cached.promise;
+    } catch (e) {
+        cached.promise = null;
+        throw e;
+    }
+
+    return cached.conn;
 }
 
 export default connectDB;

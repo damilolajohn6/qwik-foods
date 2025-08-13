@@ -34,12 +34,26 @@ export async function POST(request: Request) {
     });
     await order.save();
 
+    // --- Start of Troubleshooting Block ---
+    // Log environment variables to check their values
+    console.log('PUSHER_APP_ID:', process.env.PUSHER_APP_ID);
+    console.log('PUSHER_KEY:', process.env.PUSHER_KEY);
+    console.log('PUSHER_SECRET:', process.env.PUSHER_SECRET);
+    console.log('PUSHER_CLUSTER:', process.env.PUSHER_CLUSTER);
+
+    // Check if any Pusher environment variable is missing
+    if (!process.env.PUSHER_APP_ID || !process.env.PUSHER_KEY || !process.env.PUSHER_SECRET || !process.env.PUSHER_CLUSTER) {
+        console.error("Pusher environment variables are missing!");
+        return NextResponse.json({ error: "Server configuration error: Pusher credentials missing." }, { status: 500 });
+    }
+    // --- End of Troubleshooting Block ---
+
     // Trigger Pusher event for real-time updates
     const pusher = new Pusher({
-        appId: process.env.PUSHER_APP_ID!,
-        key: process.env.PUSHER_KEY!,
-        secret: process.env.PUSHER_SECRET!,
-        cluster: process.env.PUSHER_CLUSTER!,
+        appId: process.env.PUSHER_APP_ID,
+        key: process.env.PUSHER_KEY,
+        secret: process.env.PUSHER_SECRET,
+        cluster: process.env.PUSHER_CLUSTER,
         useTLS: true,
     });
     await pusher.trigger('orders', 'new-order', order);
