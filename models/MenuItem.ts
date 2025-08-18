@@ -2,13 +2,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import mongoose, { Schema, Document } from 'mongoose';
 
-// Enhanced AddOn schema with more features
+// AddOn schema with more features
 const AddOnSchema = new Schema({
     id: {
         type: String,
-        required: true,
-        unique: true,
-        index: true
+        required: [true, 'Add-on ID is required'],
+        unique: true, // Ensure uniqueness within the array
+        trim: true,
+        default: () => crypto.randomUUID(), 
     },
     name: {
         type: String,
@@ -40,10 +41,38 @@ const AddOnSchema = new Schema({
         min: 1
     }
 }, {
-    _id: false // Don't create separate _id for subdocuments
+    _id: false
 });
 
-// Enhanced MenuItem schema with comprehensive features
+const ImageSchema = new Schema({
+    url: {
+        type: String,
+        required: true,
+        validate: {
+            validator: (v: string) => {
+                if (!v) return false;
+                try {
+                    new URL(v);
+                    return /\.(jpg|jpeg|png|gif|webp)$/i.test(v);
+                } catch {
+                    return false;
+                }
+            },
+            message: 'Invalid image URL format'
+        }
+    },
+    alt: {
+        type: String,
+        default: '',
+        maxlength: 200
+    },
+    isPrimary: {
+        type: Boolean,
+        default: false
+    }
+}, { _id: false });
+
+
 const MenuItemSchema = new Schema({
     name: {
         type: String,
@@ -56,7 +85,8 @@ const MenuItemSchema = new Schema({
         type: String,
         unique: true,
         lowercase: true,
-        index: true
+        index: true,
+        sparse: true
     },
     description: {
         type: String,
@@ -95,24 +125,33 @@ const MenuItemSchema = new Schema({
         type: String,
         validate: {
             validator: function (v: string) {
-                if (!v) return true; // Optional field
-                return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)$/i.test(v);
+                if (!v) return true;
+                try {
+                    new URL(v);
+                    return /\.(jpg|jpeg|png|gif|webp)$/i.test(v);
+                } catch {
+                    return false;
+                }
             },
             message: 'Invalid image URL format'
         }
     },
-    images: [{
-        url: {
-            type: String,
-            required: true,
-            validate: {
-                validator: (v: string) => /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)$/i.test(v),
-                message: 'Invalid image URL format'
-            }
-        },
-        alt: { type: String, default: '' },
-        isPrimary: { type: Boolean, default: false }
-    }],
+    images: {
+        type: [ImageSchema],
+        validate: {
+            validator: function (images: any[]) {
+                if (!images || images.length === 0) return true;
+
+                // Check maximum of 5 images
+                if (images.length > 5) return false;
+
+                // Check that only one image is marked as primary
+                const primaryCount = images.filter(img => img.isPrimary).length;
+                return primaryCount <= 1;
+            },
+            message: 'Maximum 5 images allowed and only one can be primary'
+        }
+    },
     oldPrice: {
         type: Number,
         min: [0, 'Old price must be positive'],
@@ -296,7 +335,6 @@ const MenuItemSchema = new Schema({
     toObject: { virtuals: true }
 });
 
-// Indexes for better query performance
 MenuItemSchema.index({ category: 1, available: 1 });
 MenuItemSchema.index({ popular: 1, available: 1 });
 MenuItemSchema.index({ featured: 1, available: 1 });
@@ -305,8 +343,8 @@ MenuItemSchema.index({ createdAt: -1 });
 MenuItemSchema.index({ name: 'text', description: 'text', tags: 'text' });
 MenuItemSchema.index({ 'rating.average': -1 });
 MenuItemSchema.index({ orderCount: -1 });
+MenuItemSchema.index({ deletedAt: 1 });
 
-// Virtual fields
 MenuItemSchema.virtual('discountPercentage').get(function (this: any) {
     if (!this.oldPrice || this.oldPrice <= this.price) return 0;
     return Math.round(((this.oldPrice - this.price) / this.oldPrice) * 100);
@@ -336,9 +374,14 @@ MenuItemSchema.virtual('averageRating').get(function (this: any) {
     return this.rating?.average || 0;
 });
 
-// Pre-save middleware
+MenuItemSchema.virtual('primaryImage').get(function (this: any) {
+    if (this.images && this.images.length > 0) {
+        return this.images.find((img: any) => img.isPrimary) || this.images[0];
+    }
+    return null;
+});
+
 MenuItemSchema.pre('save', function (this: any, next) {
-    // Generate slug from name if not provided
     if (!this.slug && this.name) {
         this.slug = this.name
             .toLowerCase()
@@ -348,7 +391,6 @@ MenuItemSchema.pre('save', function (this: any, next) {
             .trim();
     }
 
-    // Auto-generate short description if not provided
     if (!this.shortDescription && this.description) {
         this.shortDescription = this.description.substring(0, 100);
         if (this.description.length > 100) {
@@ -356,19 +398,39 @@ MenuItemSchema.pre('save', function (this: any, next) {
         }
     }
 
-    // Ensure primary image
-    if (this.images && this.images.length > 0 && !this.imageUrl) {
+    if (this.images && this.images.length > 0) {
+        const primaryImages = this.images.filter((img: any) => img.isPrimary);
+
+        if (primaryImages.length === 0) {
+            this.images[0].isPrimary = true;
+        } else if (primaryImages.length > 1) {
+            this.images.forEach((img: any, index: number) => {
+                img.isPrimary = index === 0 && img.isPrimary;
+            });
+        }
+
         const primaryImage = this.images.find((img: any) => img.isPrimary);
-        this.imageUrl = primaryImage ? primaryImage.url : this.images[0].url;
+        this.imageUrl = primaryImage?.url || this.images[0].url;
+    } else {
+        this.imageUrl = undefined; // no images
     }
 
-    // Update timestamp
+    if (this.addOns && this.addOns.length > 0) {
+        const seenIds = new Set();
+        this.addOns = this.addOns.filter((addOn: any) => {
+            if (seenIds.has(addOn.id)) {
+                return false;
+            }
+            seenIds.add(addOn.id);
+            return true;
+        });
+    }
+
     this.updatedAt = new Date();
 
     next();
 });
 
-// Static methods
 MenuItemSchema.statics.findAvailable = function (this: mongoose.Model<IMenuItem>) {
     return this.find({
         available: true,
@@ -427,7 +489,7 @@ MenuItemSchema.methods.updateRating = function (newRating: number) {
     const newAverage = ((currentAverage * currentCount) + newRating) / newCount;
 
     this.rating = {
-        average: Math.round(newAverage * 10) / 10, // Round to 1 decimal
+        average: Math.round(newAverage * 10) / 10,
         count: newCount
     };
 
@@ -444,7 +506,6 @@ MenuItemSchema.methods.adjustStock = function (quantity: number) {
     return this.save();
 };
 
-// Export interface for TypeScript
 export interface IMenuItem extends Document {
     name: string;
     slug?: string;

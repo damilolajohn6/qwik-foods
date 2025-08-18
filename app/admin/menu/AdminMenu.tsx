@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import Image from "next/image";
 import Link from "next/link";
 import { Sidebar } from "@/components/admin/Sidebar";
+import { cn } from "@/lib/utils";
+import { Loader2, Menu } from "lucide-react";
 
 type MenuItem = {
   _id: string;
@@ -31,11 +33,28 @@ type MenuItem = {
   };
 };
 
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    setMatches(media.matches);
+
+    const listener = () => setMatches(media.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, [query]);
+
+  return matches;
+};
+
 export default function AdminMenu() {
   const router = useRouter();
   const { data: session, status } = useSession();
 
   const [search, setSearch] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMd = useMediaQuery("(min-width: 768px)");
 
   // Redirect if not admin
   useEffect(() => {
@@ -59,7 +78,7 @@ export default function AdminMenu() {
       const res = await fetch("/api/menu");
       if (!res.ok) throw new Error("Failed to fetch menu");
       const json = await res.json();
-      return json.data || [];
+      return Array.isArray(json.data) ? json.data : [];
     },
     enabled: !!session?.user && session.user.role === "admin",
   });
@@ -84,12 +103,41 @@ export default function AdminMenu() {
   }
 
   return (
-    <div className="flex">
+    <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
-      <Sidebar />
+      <div
+        className={cn(
+          "fixed md:static z-50 bg-white shadow-lg w-64 md:w-72 lg:w-80 p-4 transform transition-transform duration-300",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          "md:translate-x-0"
+        )}
+        aria-hidden={!sidebarOpen && !isMd}
+      >
+        <Sidebar />
+      </div>
+
+      {/* Overlay for mobile sidebar */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Main Content */}
-      <div className="flex-1 ml-64 p-4">
+      <div className="flex-1 p-4 sm:p-6 lg:p-8">
+        {/* Mobile menu button */}
+        <div className="md:hidden mb-4">
+          <Button
+            variant="outline"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
+
         <div className="flex justify-between my-4">
           <h1 className="text-3xl font-bold text-primary mb-6">Menu Page</h1>
           <div>
@@ -122,7 +170,7 @@ export default function AdminMenu() {
               <p className="text-center text-red-500">
                 Failed to load menu items.
               </p>
-            ) : menuItems.length === 0 ? (
+            ) : !Array.isArray(menuItems) || menuItems.length === 0 ? (
               <p className="text-center">No menu items found.</p>
             ) : (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -166,7 +214,11 @@ export default function AdminMenu() {
                           onClick={() => deleteMenuItem.mutate(item._id)}
                           disabled={deleteMenuItem.isPending}
                         >
-                          {deleteMenuItem.isPending ? "Deleting..." : "Delete"}
+                          {deleteMenuItem.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Delete"
+                          )}
                         </Button>
                       </div>
                     </div>

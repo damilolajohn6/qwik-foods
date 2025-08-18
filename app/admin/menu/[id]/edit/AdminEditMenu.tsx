@@ -17,14 +17,13 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { CldUploadWidget } from "next-cloudinary";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Loader2, X, Plus, Trash2, Menu } from "lucide-react";
 import Image from "next/image";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { cn } from "@/lib/utils";
 import { ErrorBoundary } from "react-error-boundary";
 import { debounce } from "lodash";
-import ClientWrapper from "../../client-wrapper";
 
 type MenuItem = {
   _id: string;
@@ -108,86 +107,32 @@ const useMediaQuery = (query: string) => {
   return matches;
 };
 
-export default function AdminMenu() {
+export default function EditMenuItem() {
   const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMd = useMediaQuery("(min-width: 768px)");
-  const [formData, setFormData] = useState<FormData>(() => {
-    // Load from localStorage if available
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("adminMenuForm");
-      const initialData = saved
-        ? JSON.parse(saved)
-        : {
-            name: "",
-            description: "",
-            price: "",
-            category: "",
-            imageUrl: "",
-            images: [],
-            addOns: [],
-            popular: false,
-            vegetarian: false,
-            vegan: false,
-            glutenFree: false,
-            prepTime: "",
-            allergens: [],
-            tags: [],
-            nutrition: { calories: "", protein: "", carbs: "", fat: "" },
-          };
-
-      if (Array.isArray(initialData.images)) {
-        initialData.images = initialData.images.slice(0, 5);
-
-        const primaryImages = initialData.images.filter(
-          (img: any) => img.isPrimary
-        );
-        if (primaryImages.length > 1) {
-          initialData.images = initialData.images.map(
-            (img: any, idx: number) => ({
-              ...img,
-              isPrimary: idx === 0,
-            })
-          );
-        } else if (
-          initialData.images.length > 0 &&
-          primaryImages.length === 0
-        ) {
-          initialData.images[0].isPrimary = true;
-        }
-
-        initialData.imageUrl =
-          initialData.images.find((img: any) => img.isPrimary)?.url ||
-          initialData.images[0]?.url ||
-          "";
-      } else {
-        initialData.images = [];
-        initialData.imageUrl = "";
-      }
-
-      return initialData;
-    }
-    return {
-      name: "",
-      description: "",
-      price: "",
-      category: "",
-      imageUrl: "",
-      images: [],
-      addOns: [],
-      popular: false,
-      vegetarian: false,
-      vegan: false,
-      glutenFree: false,
-      prepTime: "",
-      allergens: [],
-      tags: [],
-      nutrition: { calories: "", protein: "", carbs: "", fat: "" },
-    };
+  const [formData, setFormData] = useState<FormData>({
+    name: "",
+    description: "",
+    price: "",
+    category: "",
+    imageUrl: "",
+    images: [],
+    addOns: [],
+    popular: false,
+    vegetarian: false,
+    vegan: false,
+    glutenFree: false,
+    prepTime: "",
+    allergens: [],
+    tags: [],
+    nutrition: { calories: "", protein: "", carbs: "", fat: "" },
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [previewImages, setPreviewImages] = useState<
-    { url: string; isPrimary: boolean }[]
+    { url: string; isPrimary: boolean; alt?: string }[]
   >([]);
   const [newAddOn, setNewAddOn] = useState({
     name: "",
@@ -196,29 +141,69 @@ export default function AdminMenu() {
   });
   const [newTag, setNewTag] = useState("");
 
-  const { refetch, isLoading } = useQuery<MenuItem[]>({
-    queryKey: ["menuItems"],
+  const { isLoading: isFetching } = useQuery<MenuItem>({
+    queryKey: ["menuItem", id],
     queryFn: async () => {
-      const res = await fetch("/api/menu");
-      if (!res.ok) throw new Error("Failed to fetch menu items");
-      return res.json();
+      const res = await fetch(`/api/menu/${id}`);
+      if (!res.ok) throw new Error("Failed to fetch menu item");
+      const data = await res.json();
+      const item: MenuItem = data;
+
+      // Properly map the data
+      const formItem: FormData = {
+        name: item.name || "",
+        description: item.description || "",
+        price: item.price ? item.price.toString() : "",
+        category: item.category || "",
+        imageUrl: item.imageUrl || "",
+        images: item.images || [],
+        addOns: (item.addOns || []).map((addOn) => ({
+          ...addOn,
+          category: addOn.category ?? "extra",
+        })),
+        popular: !!item.popular,
+        vegetarian: !!item.vegetarian,
+        vegan: !!item.vegan,
+        glutenFree: !!item.glutenFree,
+        prepTime: item.prepTime ? item.prepTime.toString() : "",
+        allergens: item.allergens || [],
+        tags: item.tags || [],
+        nutrition: {
+          calories: item.nutrition?.calories
+            ? item.nutrition.calories.toString()
+            : "",
+          protein: item.nutrition?.protein
+            ? item.nutrition.protein.toString()
+            : "",
+          carbs: item.nutrition?.carbs ? item.nutrition.carbs.toString() : "",
+          fat: item.nutrition?.fat ? item.nutrition.fat.toString() : "",
+        },
+      };
+
+      setFormData(formItem);
+
+      // Set preview images properly
+      const images = item.images || [];
+      setPreviewImages(
+        images.map((img) => ({
+          url: img.url,
+          isPrimary: !!img.isPrimary,
+          alt: img.alt || "",
+        }))
+      );
+
+      return item;
     },
+    enabled: !!id,
   });
 
+  // Persist form data to localStorage
   useEffect(() => {
-    localStorage.setItem("adminMenuForm", JSON.stringify(formData));
-  }, [formData]);
-
-  useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
-      images: previewImages,
-      imageUrl:
-        previewImages.find((img) => img.isPrimary)?.url ||
-        previewImages[0]?.url ||
-        "",
-    }));
-  }, [previewImages]);
+    if (formData.name) {
+      // Only persist if form has data
+      localStorage.setItem(`adminMenuEdit_${id}`, JSON.stringify(formData));
+    }
+  }, [formData, id]);
 
   const validateField = debounce((name: string, value: any) => {
     setErrors((prev) => {
@@ -256,7 +241,7 @@ export default function AdminMenu() {
     });
   }, 300);
 
-  const addMenuItem = useMutation({
+  const updateMenuItem = useMutation({
     mutationFn: async () => {
       const validationErrors: Record<string, string> = {};
       if (!formData.name) validationErrors.name = "Name is required";
@@ -278,43 +263,60 @@ export default function AdminMenu() {
         throw new Error("Validation failed");
       }
 
-      const res = await fetch("/api/menu", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          price: parseFloat(formData.price),
-          prepTime: formData.prepTime
-            ? parseFloat(formData.prepTime)
+      // Ensure primary image is set correctly
+      const primaryImage = formData.images?.find((img) => img.isPrimary);
+      const finalImageUrl =
+        primaryImage?.url ||
+        formData.images?.[0]?.url ||
+        formData.imageUrl ||
+        "";
+
+      const updateData = {
+        ...formData,
+        price: parseFloat(formData.price),
+        prepTime: formData.prepTime ? parseFloat(formData.prepTime) : undefined,
+        imageUrl: finalImageUrl, // Ensure imageUrl is set
+        images: formData.images, // Include all images
+        nutrition: {
+          calories: formData.nutrition?.calories
+            ? parseFloat(formData.nutrition.calories)
             : undefined,
-          nutrition: {
-            calories: formData.nutrition?.calories
-              ? parseFloat(formData.nutrition.calories)
-              : undefined,
-            protein: formData.nutrition?.protein
-              ? parseFloat(formData.nutrition.protein)
-              : undefined,
-            carbs: formData.nutrition?.carbs
-              ? parseFloat(formData.nutrition.carbs)
-              : undefined,
-            fat: formData.nutrition?.fat
-              ? parseFloat(formData.nutrition.fat)
-              : undefined,
-          },
-        }),
+          protein: formData.nutrition?.protein
+            ? parseFloat(formData.nutrition.protein)
+            : undefined,
+          carbs: formData.nutrition?.carbs
+            ? parseFloat(formData.nutrition.carbs)
+            : undefined,
+          fat: formData.nutrition?.fat
+            ? parseFloat(formData.nutrition.fat)
+            : undefined,
+        },
+      };
+
+      console.log("Updating menu item with data:", updateData); // Debug log
+
+      const res = await fetch(`/api/menu/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
       });
-      if (!res.ok) throw new Error("Failed to add menu item");
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Update failed:", errorData);
+        throw new Error(errorData.message || "Failed to update menu item");
+      }
+
       return res.json();
     },
     onSuccess: () => {
-      toast.success("Menu item added successfully!");
-      resetForm();
-      refetch();
+      toast.success("Menu item updated successfully!");
+      localStorage.removeItem(`adminMenuEdit_${id}`);
       router.push("/admin/menu");
-      localStorage.removeItem("adminMenuForm");
     },
     onError: (error: any) => {
-      toast.error(error.message || "Failed to add menu item");
+      console.error("Update error:", error);
+      toast.error(error.message || "Failed to update menu item");
     },
   });
 
@@ -351,15 +353,12 @@ export default function AdminMenu() {
       toast.error("Valid positive price required for add-on");
       return;
     }
-
-    const addOnId = crypto.randomUUID();
-
     setFormData((prev) => ({
       ...prev,
       addOns: [
         ...(prev.addOns ?? []),
         {
-          id: addOnId,
+          id: crypto.randomUUID(),
           name: newAddOn.name,
           price: parseFloat(newAddOn.price),
           category: newAddOn.category,
@@ -413,26 +412,67 @@ export default function AdminMenu() {
         toast.error("Maximum 5 images allowed");
         return;
       }
+
       const newImage = {
         url: result.info.secure_url,
-        isPrimary: previewImages.length === 0,
-        alt: "Food For Menu", 
+        alt: result.info.original_filename || "",
+        isPrimary: previewImages.length === 0, // First image is primary
       };
+
+      console.log("New image uploaded:", newImage); // Debug log
+
+      // Update form data
+      setFormData((prev) => {
+        const updatedImages = [...(prev.images ?? []), newImage];
+        const primaryImage = updatedImages.find((img) => img.isPrimary);
+
+        return {
+          ...prev,
+          images: updatedImages,
+          imageUrl: primaryImage?.url || updatedImages[0]?.url || prev.imageUrl,
+        };
+      });
+
+      // Update preview
       setPreviewImages((prev) => [...prev, newImage]);
+
+      toast.success("Image uploaded successfully!");
     }
   };
 
   const removeImage = (url: string) => {
     const newImages = previewImages.filter((img) => img.url !== url);
-    setPreviewImages(
-      newImages.map((img, idx) => ({ ...img, isPrimary: idx === 0 }))
-    );
+
+    // If we're removing the primary image, make the first remaining image primary
+    const updatedImages = newImages.map((img, idx) => ({
+      ...img,
+      isPrimary: idx === 0,
+    }));
+
+    const newPrimaryUrl = updatedImages.length > 0 ? updatedImages[0].url : "";
+
+    setFormData((prev) => ({
+      ...prev,
+      images: updatedImages,
+      imageUrl: newPrimaryUrl,
+    }));
+
+    setPreviewImages(updatedImages);
   };
 
   const setPrimaryImage = (url: string) => {
-    setPreviewImages((prev) =>
-      prev.map((img) => ({ ...img, isPrimary: img.url === url }))
-    );
+    const updatedImages = previewImages.map((img) => ({
+      ...img,
+      isPrimary: img.url === url,
+    }));
+
+    setFormData((prev) => ({
+      ...prev,
+      images: updatedImages,
+      imageUrl: url,
+    }));
+
+    setPreviewImages(updatedImages);
   };
 
   const toggleAllergen = (allergen: string) => {
@@ -482,31 +522,40 @@ export default function AdminMenu() {
     </div>
   );
 
+  if (isFetching) {
+    return (
+      <div className="flex min-h-screen bg-gray-100 items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Loading menu item...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="flex min-h-screen bg-gray-100">
-        <ClientWrapper>
-          {/* Sidebar */}
-          <div
-            className={cn(
-              "fixed md:static z-50 bg-white shadow-lg w-64 md:w-72 lg:w-80 p-4 transform transition-transform duration-300",
-              sidebarOpen ? "translate-x-0" : "-translate-x-full",
-              "md:translate-x-0"
-            )}
-            aria-hidden={!sidebarOpen && !isMd}
-          >
-            <Sidebar />
-          </div>
-
-          {/* Overlay for mobile sidebar */}
-          {sidebarOpen && (
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-              onClick={() => setSidebarOpen(false)}
-              aria-hidden="true"
-            />
+        {/* Sidebar */}
+        <div
+          className={cn(
+            "fixed md:static z-50 bg-white shadow-lg w-64 md:w-72 lg:w-80 p-4 transform transition-transform duration-300",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full",
+            "md:translate-x-0"
           )}
-        </ClientWrapper>
+          aria-hidden={!sidebarOpen && !isMd}
+        >
+          <Sidebar />
+        </div>
+
+        {/* Overlay for mobile sidebar */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
 
         {/* Main Content */}
         <div className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -524,7 +573,7 @@ export default function AdminMenu() {
           {/* Form */}
           <div className="container mx-auto max-w-5xl">
             <h1 className="text-2xl sm:text-3xl font-bold mb-6">
-              Add New Menu Item
+              Edit Menu Item
             </h1>
 
             <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -587,9 +636,10 @@ export default function AdminMenu() {
                     <Label htmlFor="category">Category *</Label>
                     <Select
                       value={formData.category}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, category: value }))
-                      }
+                      onValueChange={(value) => {
+                        setFormData((prev) => ({ ...prev, category: value }));
+                        validateField("category", value);
+                      }}
                     >
                       <SelectTrigger
                         className={cn(errors.category && "border-red-500")}
@@ -650,52 +700,86 @@ export default function AdminMenu() {
                     <CldUploadWidget
                       uploadPreset="gdmugccy"
                       onUpload={handleImageUpload}
+                      options={{
+                        multiple: true,
+                        maxFiles: 5 - previewImages.length,
+                        resourceType: "image",
+                        clientAllowedFormats: [
+                          "jpg",
+                          "jpeg",
+                          "png",
+                          "gif",
+                          "webp",
+                        ],
+                        maxFileSize: 10000000, // 10MB
+                      }}
                     >
                       {({ open }) => (
                         <Button
+                          type="button"
                           onClick={() => open()}
                           variant="outline"
                           className="w-full"
+                          disabled={previewImages.length >= 5}
                         >
-                          Upload Images
+                          {previewImages.length >= 5
+                            ? "Maximum Images Reached"
+                            : "Upload Images"}
                         </Button>
                       )}
                     </CldUploadWidget>
+
                     {previewImages.length > 0 && (
-                      <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {previewImages.map((img) => (
-                          <div key={img.url} className="relative">
-                            <Image
-                              src={img.url}
-                              width={150}
-                              height={150}
-                              alt="Preview"
-                              className="w-full h-24 object-cover rounded-md"
-                            />
-                            <div className="absolute top-1 right-1 flex gap-1">
-                              <Button
-                                variant="destructive"
-                                size="icon"
-                                onClick={() => removeImage(img.url)}
-                                aria-label="Remove image"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant={img.isPrimary ? "default" : "outline"}
-                                size="icon"
-                                onClick={() => setPrimaryImage(img.url)}
-                                aria-label={
-                                  img.isPrimary
-                                    ? "Primary image"
-                                    : "Set as primary image"
-                                }
-                              >
-                                {img.isPrimary ? "★" : "☆"}
-                              </Button>
+                      <div className="mt-4 space-y-2">
+                        <p className="text-sm text-gray-600">
+                          {previewImages.length}/5 images uploaded
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {previewImages.map((img, index) => (
+                            <div key={img.url} className="relative group">
+                              <Image
+                                src={img.url}
+                                width={150}
+                                height={150}
+                                alt={img.alt || `Image ${index + 1}`}
+                                className="w-full h-24 object-cover rounded-md"
+                              />
+                              <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => removeImage(img.url)}
+                                  aria-label="Remove image"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant={
+                                    img.isPrimary ? "default" : "outline"
+                                  }
+                                  size="sm"
+                                  onClick={() => setPrimaryImage(img.url)}
+                                  aria-label={
+                                    img.isPrimary
+                                      ? "Primary image"
+                                      : "Set as primary image"
+                                  }
+                                  className="h-6 w-6 p-0 text-xs"
+                                >
+                                  {img.isPrimary ? "★" : "☆"}
+                                </Button>
+                              </div>
+                              {img.isPrimary && (
+                                <div className="absolute bottom-1 left-1 bg-green-500 text-white text-xs px-1 rounded">
+                                  Primary
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -742,7 +826,7 @@ export default function AdminMenu() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Button onClick={handleAddOn}>
+                      <Button type="button" onClick={handleAddOn}>
                         <Plus className="h-4 w-4 sm:mr-2" />
                         <span className="hidden sm:inline">Add</span>
                       </Button>
@@ -758,8 +842,9 @@ export default function AdminMenu() {
                             {addOn.price.toFixed(2)}
                           </span>
                           <Button
+                            type="button"
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => removeAddOn(addOn.id)}
                             aria-label={`Remove ${addOn.name} add-on`}
                           >
@@ -848,7 +933,11 @@ export default function AdminMenu() {
                       onChange={(e) => setNewTag(e.target.value)}
                       onKeyPress={(e) => e.key === "Enter" && addTag()}
                     />
-                    <Button onClick={addTag} className="w-full xs:w-auto">
+                    <Button
+                      type="button"
+                      onClick={addTag}
+                      className="w-full xs:w-auto"
+                    >
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
@@ -860,11 +949,12 @@ export default function AdminMenu() {
                       >
                         <span>{tag}</span>
                         <Button
+                          type="button"
                           variant="ghost"
-                          size="icon"
+                          size="sm"
                           onClick={() => removeTag(tag)}
                           aria-label={`Remove ${tag} tag`}
-                          className="ml-1"
+                          className="ml-1 h-4 w-4 p-0"
                         >
                           <X className="h-3 w-3" />
                         </Button>
@@ -914,20 +1004,25 @@ export default function AdminMenu() {
 
               {/* Form Actions */}
               <div className="mt-8 flex justify-end space-x-4">
-                <Button variant="outline" onClick={resetForm}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push("/admin/menu")}
+                >
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => addMenuItem.mutate()}
-                  disabled={addMenuItem.isPending || isLoading}
+                  type="button"
+                  onClick={() => updateMenuItem.mutate()}
+                  disabled={updateMenuItem.isPending || isFetching}
                 >
-                  {addMenuItem.isPending ? (
+                  {updateMenuItem.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
+                      Updating...
                     </>
                   ) : (
-                    "Save Item"
+                    "Update Item"
                   )}
                 </Button>
               </div>

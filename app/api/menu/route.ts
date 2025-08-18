@@ -11,6 +11,11 @@ const MenuItemSchema = z.object({
     price: z.number().positive('Price must be positive'),
     category: z.string().min(1, 'Category is required').max(50, 'Category is too long'),
     imageUrl: z.string().url('Invalid image URL').optional().nullable(),
+    images: z.array(z.object({
+        url: z.string().url('Invalid image URL'),
+        alt: z.string().optional(),
+        isPrimary: z.boolean().optional(),
+    })).optional(),
     oldPrice: z.number().positive('Old price must be positive').optional(),
     addOns: z
         .array(
@@ -18,10 +23,26 @@ const MenuItemSchema = z.object({
                 id: z.string().min(1, 'Add-on ID is required'),
                 name: z.string().min(1, 'Add-on name is required').max(50),
                 price: z.number().positive('Add-on price must be positive'),
+                category: z.enum(['extra', 'sauce', 'side', 'drink', 'dessert']).optional(),
             })
         )
         .optional(),
     popular: z.boolean().default(false),
+    vegetarian: z.boolean().default(false),
+    vegan: z.boolean().default(false),
+    glutenFree: z.boolean().default(false),
+    prepTime: z.number().int().min(1).max(120).optional(),
+    allergens: z.array(z.enum([
+        'dairy', 'eggs', 'fish', 'shellfish', 'tree_nuts',
+        'peanuts', 'wheat', 'soybeans', 'sesame'
+    ])).optional(),
+    tags: z.array(z.string().max(30)).optional(),
+    nutrition: z.object({
+        calories: z.number().min(0).optional(),
+        protein: z.number().min(0).optional(),
+        carbs: z.number().min(0).optional(),
+        fat: z.number().min(0).optional(),
+    }).optional(),
 });
 
 const QuerySchema = z.object({
@@ -247,6 +268,63 @@ export const POST = withRateLimit(async (request: Request) => {
         await connectDB();
 
         const data = await request.json();
+
+        // Validate images array
+        if (Array.isArray(data.images)) {
+            // Check maximum 5 images
+            if (data.images.length > 5) {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        message: 'Invalid input data',
+                        errors: { images: 'Maximum 5 images allowed' }
+                    },
+                    { status: 400 }
+                );
+            }
+
+            // Ensure only one primary image
+            const primaryImages = data.images.filter((img: any) => img.isPrimary);
+            if (primaryImages.length > 1) {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        message: 'Invalid input data',
+                        errors: { images: 'Only one image can be primary' }
+                    },
+                    { status: 400 }
+                );
+            }
+
+            // If no primary image, set the first one as primary
+            if (data.images.length > 0 && primaryImages.length === 0) {
+                data.images[0].isPrimary = true;
+            }
+
+            // Sync imageUrl with primary image
+            const primary = data.images.find((img: any) => img.isPrimary);
+            data.imageUrl = primary?.url || data.images[0]?.url || undefined;
+        } else {
+            // If no images provided, clean up
+            data.images = [];
+            data.imageUrl = undefined;
+        }
+
+        // Handle add-ons
+        if (data.addOns && data.addOns.length > 0) {
+            const addOnIds = new Set();
+            data.addOns = data.addOns.map((addOn: any) => {
+                if (!addOn.id || addOnIds.has(addOn.id)) {
+                    return {
+                        ...addOn,
+                        id: crypto.randomUUID()
+                    };
+                }
+                addOnIds.add(addOn.id);
+                return addOn;
+            });
+        }
+
         const parseResult = MenuItemSchema.safeParse(data);
 
         if (!parseResult.success) {
@@ -313,3 +391,4 @@ export const POST = withRateLimit(async (request: Request) => {
         );
     }
 });
+

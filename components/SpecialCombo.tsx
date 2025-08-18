@@ -22,8 +22,11 @@ interface SpecialComboItem {
 }
 
 const fetchSpecialCombos = async (): Promise<{ data: SpecialComboItem[] }> => {
-  const res = await fetch("/api/special-combos");
+  const res = await fetch("/api/special-combo", {
+    method: "GET"
+  });
   if (!res.ok) throw new Error("Failed to fetch special combos");
+  console.log("Response from API:", res);
   return res.json();
 };
 
