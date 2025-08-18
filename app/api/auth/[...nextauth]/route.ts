@@ -1,39 +1,43 @@
-
-import NextAuth, { AuthOptions, Session, User } from 'next-auth';
-import { JWT } from 'next-auth/jwt';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import connectDB from '@/lib/db';
-import UserModel from '@/models/User';
-import bcrypt from 'bcryptjs';
+import NextAuth, { AuthOptions, Session, User } from "next-auth";
+import { JWT } from "next-auth/jwt";
+import CredentialsProvider from "next-auth/providers/credentials";
+import connectDB from "@/lib/db";
+import UserModel from "@/models/User";
+import bcrypt from "bcryptjs";
 
 export const authOptions: AuthOptions = {
     providers: [
         CredentialsProvider({
-            name: 'Credentials',
+            name: "Credentials",
             credentials: {
-                email: { label: 'Email', type: 'text' },
-                password: { label: 'Password', type: 'password' },
+                email: { label: "Email", type: "text" },
+                password: { label: "Password", type: "password" },
             },
             async authorize(credentials) {
                 await connectDB();
 
-                if (!credentials?.email || !credentials?.password) return null;
-
-                const user = await UserModel.findOne({ email: credentials.email });
-
-                if (
-                    user &&
-                    (await bcrypt.compare(credentials.password, user.password))
-                ) {
-                    return {
-                        id: user._id.toString(),
-                        email: user.email,
-                        name: user.name,
-                        role: user.role,
-                    } as User & { role: string };
+                if (!credentials?.email || !credentials?.password) {
+                    return null;
                 }
 
-                return null;
+                try {
+                    const user = await UserModel.findOne({ email: credentials.email });
+                    if (
+                        user &&
+                        (await bcrypt.compare(credentials.password, user.password))
+                    ) {
+                        return {
+                            id: user._id.toString(),
+                            email: user.email,
+                            name: user.name,
+                            role: user.role,
+                        } as User & { role: string };
+                    }
+                    return null;
+                } catch (error) {
+                    console.error("Authentication error:", error);
+                    return null;
+                }
             },
         }),
     ],
@@ -62,18 +66,18 @@ export const authOptions: AuthOptions = {
         }): Promise<JWT> {
             if (user) {
                 token.sub = user.id;
-                token.role = user.role ?? 'user';
+                token.role = user.role ?? "user";
             }
             return token;
         },
     },
 
     pages: {
-        signIn: '/auth/signin',
+        signIn: "/auth/signin",
     },
 
     session: {
-        strategy: 'jwt',
+        strategy: "jwt",
     },
 };
 

@@ -49,16 +49,19 @@ const PopularItem: React.FC<PopularItemProps> = ({ item, onAddToCart }) => (
         className="block"
         aria-label={`View ${item.title} details`}
       >
-        <Image
-          src={item.image || "/place.jpg"}
-          alt={item.title}
-          width={256}
-          height={160}
-          style={{ objectFit: "cover" }}
-          className="rounded-lg"
-          sizes="(max-width: 768px) 100vw, 256px"
-          priority={true}
-        />
+        <div className="relative w-full h-40 bg-orange-100 rounded-lg overflow-hidden">
+          <Image
+            src={item.image || "/place.jpg"}
+            alt={item.title}
+            width={256}
+            height={160}
+            style={{ objectFit: "cover" }}
+            className="rounded-lg"
+            sizes="(max-width: 768px) 100vw, 256px"
+            priority={true}
+          />
+          <div className="absolute inset-0 bg-orange-200 opacity-50 rounded-lg"></div>
+        </div>
       </Link>
       <Button
         className="absolute top-2 right-2 bg-white rounded-full p-2 text-red-500 shadow-md"
@@ -68,14 +71,11 @@ const PopularItem: React.FC<PopularItemProps> = ({ item, onAddToCart }) => (
         <FaHeart />
       </Button>
     </div>
-    <h3 className="font-bold text-lg mt-2">{item.title}</h3>
-    <p className="text-gray-500 text-sm line-clamp-2">{item.description}</p>
-    <p className="text-gray-800 font-semibold mt-1">
-      ₦{item.price.toLocaleString()}
-    </p>
+    <h3 className="font-bold text-lg mt-2 text-center">{item.title}</h3>
+    <p className="text-gray-500 text-sm line-clamp-2 text-center">{item.description}</p>
     <Button
       onClick={() => onAddToCart(item)}
-      className="mt-4 flex items-center justify-center w-full py-2 px-4 bg-white text-red-500 border border-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors duration-300"
+      className="mt-4 flex items-center justify-center w-full py-2 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300"
       aria-label={`Add ${item.title} to cart`}
     >
       <FaPlus className="mr-2" />
@@ -86,13 +86,12 @@ const PopularItem: React.FC<PopularItemProps> = ({ item, onAddToCart }) => (
 
 const Category = () => {
   const [page, setPage] = useState(1);
-  const limit = 10;
   const addItemsToCart = useCartStore((state) => state.addItemsToCart);
 
   const { data, error, isLoading } = useQuery<ApiResponse>({
     queryKey: ["popularItems", page],
     queryFn: async () => {
-      const res = await fetch(`/api/menu?page=${page}&limit=${limit}`, {
+      const res = await fetch(`/api/menu`, {
         cache: "no-store",
         next: { revalidate: 300 },
       });
@@ -156,7 +155,7 @@ const Category = () => {
         </Link>
       </div>
       <div
-        className="flex overflow-x-auto scroll-smooth snap-x"
+        className="flex overflow-x-auto scroll-smooth snap-x space-x-4 pb-4"
         role="region"
         aria-label="Popular items carousel"
       >
