@@ -72,7 +72,10 @@ export async function POST(req: Request) {
         password: hashedPassword,
     });
 
-    await pusher.trigger("users", "user-added", User);
+    await pusher.trigger("users", "user-added", {
+        ...newUser.toObject(),
+        password: undefined,
+    });
 
     return NextResponse.json(
         { message: "User created successfully", user: { ...newUser.toObject(), password: undefined } },
