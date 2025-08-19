@@ -1,13 +1,11 @@
-import React from "react";
-import Checkout from "./Checkout";
-import ClientWrapper from "../admin/client-wrapper";
+import React from 'react';
+import CheckoutWrapper from './CheckoutWrapper';
+
 
 const CheckoutPage = () => {
   return (
     <div>
-      <ClientWrapper>
-        <Checkout />
-      </ClientWrapper>
+      <CheckoutWrapper />
     </div>
   );
 };
