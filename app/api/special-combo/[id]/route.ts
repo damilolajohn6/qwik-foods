@@ -6,14 +6,13 @@ import mongoose from 'mongoose';
 
 export async function GET(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         await connectDB();
 
-        const { id } = params;
+        const { id } = await params;
 
-        // Validate ObjectId
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return NextResponse.json(
                 { success: false, message: 'Invalid combo ID' },
@@ -25,7 +24,7 @@ export async function GET(
             .populate({
                 path: 'items._id',
                 select: 'name price category available',
-                options: { strictPopulate: false }
+                options: { strictPopulate: false },
             })
             .lean();
 
@@ -36,7 +35,6 @@ export async function GET(
             );
         }
 
-        // Transform the data similar to the main route
         const transformedCombo = {
             ...combo,
             items: combo.items.map((item: any) => {
@@ -67,9 +65,8 @@ export async function GET(
         return NextResponse.json({
             success: true,
             data: transformedCombo,
-            message: 'Combo fetched successfully'
+            message: 'Combo fetched successfully',
         });
-
     } catch (error) {
         console.error('Error fetching combo:', error);
         return NextResponse.json(
