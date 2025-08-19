@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 
 const HeroSection = () => {
   return (
-    <section className="flex flex-col lg:flex-row items-center justify-between px-4 md:px-8 lg:px-16 py-12 gap-8 lg:gap-16">
+    <section className="flex flex-col lg:flex-row items-center justify-between px-4 bg-white md:px-8 lg:px-16 py-12 gap-8 lg:gap-16">
       {/* Left Content */}
       <div className="flex-1 text-center lg:text-left">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 leading-snug">
